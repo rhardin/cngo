@@ -3,7 +3,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 )
 
 var store = make(map[string]string)
@@ -37,5 +36,5 @@ func Delete(key string) error {
 }
 
 func main() {
-	fmt.Println("vim-go")
+	server()
 }
