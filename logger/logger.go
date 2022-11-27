@@ -5,7 +5,9 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
+	"sync"
 )
 
 // Event persistence data type
@@ -43,6 +45,7 @@ type FileTransactionLogger struct {
 	errors       <-chan error // read only channel for sending errors
 	lastSequence uint64       // the last used num
 	file         *os.File
+	wg           *sync.WaitGroup
 }
 
 // PostgresTransactionLogger data type for event streams and state backed by postgres
@@ -144,13 +147,15 @@ func (l *PostgresTransactionLogger) createTable() error {
 }
 
 // MakeFileTransactionLogger constructor-ish a FNL
-func MakeFileTransactionLogger(filename string) (TransactionLogger, error) {
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
+func MakeFileTransactionLogger(filename string) (*FileTransactionLogger, error) {
+	var err error
+	var l FileTransactionLogger = FileTransactionLogger{wg: &sync.WaitGroup{}}
+	l.file, err = os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open transaction log file: %w", err)
 	}
 
-	return &FileTransactionLogger{file: file}, nil
+	return &l, nil
 }
 
 // MakePostgresTransactionLogger constructor func
@@ -190,16 +195,22 @@ func (l *FileTransactionLogger) Run() {
 	errors := make(chan error, 1)
 	l.errors = errors
 
+	// Start retrieving events from the events channel and writing them
+	// to the transaction log
 	go func() {
 		for e := range events {
 			l.lastSequence++
 
-			_, err := fmt.Fprintf(l.file, "%d\t%d\t%s\t%s\n", l.lastSequence, e.EventType, e.Key, e.Value)
+			_, err := fmt.Fprintf(
+				l.file,
+				"%d\t%d\t%s\t%s\n",
+				l.lastSequence, e.EventType, e.Key, e.Value)
 
 			if err != nil {
-				errors <- err
-				return
+				errors <- fmt.Errorf("cannot write to log file: %w", err)
 			}
+
+			l.wg.Done()
 		}
 	}()
 }
@@ -219,10 +230,7 @@ func (l *FileTransactionLogger) ReadEvents() (<-chan Event, <-chan error) {
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			if _, err := fmt.Sscanf(line, "%d\t%d\t%s\t%s", &e.Sequence, &e.EventType, &e.Key, &e.Value); err != nil {
-				outError <- fmt.Errorf("input parse error: %w", err)
-				return
-			}
+			fmt.Sscanf(line, "%d\t%d\t%s\t%s", &e.Sequence, &e.EventType, &e.Key, &e.Value)
 
 			// Sanity check: are the sequence numbers ascending order?
 			if l.lastSequence >= e.Sequence {
@@ -230,6 +238,13 @@ func (l *FileTransactionLogger) ReadEvents() (<-chan Event, <-chan error) {
 				return
 			}
 
+			uv, err := url.QueryUnescape(e.Value)
+			if err != nil {
+				outError <- fmt.Errorf("vaalue decoding failure: %w", err)
+				return
+			}
+
+			e.Value = uv
 			l.lastSequence = e.Sequence
 			outEvent <- e
 		}
@@ -243,14 +258,32 @@ func (l *FileTransactionLogger) ReadEvents() (<-chan Event, <-chan error) {
 	return outEvent, outError
 }
 
+// Wait for io
+func (l *FileTransactionLogger) Wait() {
+	l.wg.Wait()
+}
+
 // WritePut send put events
 func (l *FileTransactionLogger) WritePut(key, value string) {
+	l.wg.Add(1)
 	l.events <- Event{EventType: EventPut, Key: key, Value: value}
 }
 
 // WriteDelete send delete events
 func (l *FileTransactionLogger) WriteDelete(key string) {
+	l.wg.Add(1)
 	l.events <- Event{EventType: EventDelete, Key: key}
+}
+
+// Close the connection to io
+func (l *FileTransactionLogger) Close() error {
+	l.wg.Wait()
+
+	if l.events != nil {
+		close(l.events) // Terminates Run loop and goroutine
+	}
+
+	return l.file.Close()
 }
 
 // Err send errors on channel

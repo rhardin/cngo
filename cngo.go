@@ -21,12 +21,12 @@ var kvs = store.KVS{M: make(map[string]string)}
 func initTransactionLogger() error {
 	var err error
 
-	log, err := logger.MakeFileTransactionLogger("transaction.log")
+	tLog, err := logger.MakeFileTransactionLogger("transaction.log")
 	if err != nil {
 		return fmt.Errorf("failed to create event logger: %w", err)
 	}
 
-	events, errors := log.ReadEvents()
+	events, errors := tLog.ReadEvents()
 	e, ok := logger.Event{}, true
 
 	for ok && err == nil {
@@ -42,7 +42,7 @@ func initTransactionLogger() error {
 		}
 	}
 
-	log.Run()
+	tLog.Run()
 
 	return err
 }
@@ -113,7 +113,10 @@ func KeyValueDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	initTransactionLogger()
+	err := initTransactionLogger()
+	if err != nil {
+		panic(err)
+	}
 
 	r := mux.NewRouter()
 
