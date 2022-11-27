@@ -75,14 +75,64 @@ func (l *PostgresTransactionLogger) Err() <-chan error {
 	return l.errors
 }
 
-// ReadEvents reads the events from the log table in postgres
+// ReadEvents reads the transaction log in the postgres db
 func (l *PostgresTransactionLogger) ReadEvents() (<-chan Event, <-chan error) {
-	return nil, nil
+	outEvent := make(chan Event)
+	outError := make(chan error, 1)
+
+	go func() {
+		defer close(outEvent)
+		defer close(outError)
+
+		query := `select sequence, event_type, key, value from Transactions order by sequence`
+
+		rows, err := l.db.Query(query)
+		if err != nil {
+			outError <- fmt.Errorf("sql query error: %w", err)
+			return
+		}
+
+		defer rows.Close()
+
+		e := Event{}
+
+		for rows.Next() {
+			err = rows.Scan(&e.Sequence, &e.EventType, &e.Key, &e.Value)
+			if err != nil {
+				outError <- fmt.Errorf("error reading row: %w", err)
+				return
+			}
+
+			outEvent <- e
+		}
+
+		err = rows.Err()
+		if err != nil {
+			outError <- fmt.Errorf("transaction log read error: %w", err)
+		}
+
+	}()
+	return outEvent, outError
 }
 
 // Run runs the the thing
 func (l *PostgresTransactionLogger) Run() {
-	return
+	events := make(chan Event, 16)
+	l.events = events
+
+	errors := make(chan error, 1)
+	l.errors = errors
+
+	go func() {
+		query := `insert into Transactions (event_type, key, value) values ($1, $2, $3)`
+
+		for e := range events {
+			_, err := l.db.Exec(query, e.EventType, e.Key, e.Value)
+			if err != nil {
+				errors <- err
+			}
+		}
+	}()
 }
 
 func (l *PostgresTransactionLogger) verifyTableExists() (bool, error) {
