@@ -1,10 +1,10 @@
-// Package logger - logging and persistence for cngo kvs
-package logger
+package main
 
 import (
 	"bufio"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"sync"
@@ -149,7 +149,7 @@ func (l *PostgresTransactionLogger) createTable() error {
 // MakeFileTransactionLogger constructor-ish a FNL
 func MakeFileTransactionLogger(filename string) (*FileTransactionLogger, error) {
 	var err error
-	var l FileTransactionLogger = FileTransactionLogger{wg: &sync.WaitGroup{}}
+	var l = FileTransactionLogger{wg: &sync.WaitGroup{}}
 	l.file, err = os.OpenFile(filename, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open transaction log file: %w", err)
@@ -265,8 +265,11 @@ func (l *FileTransactionLogger) Wait() {
 
 // WritePut send put events
 func (l *FileTransactionLogger) WritePut(key, value string) {
+	log.Printf("got to write put")
 	l.wg.Add(1)
+	log.Printf("got to wg add")
 	l.events <- Event{EventType: EventPut, Key: key, Value: value}
+	log.Printf("got done")
 }
 
 // WriteDelete send delete events

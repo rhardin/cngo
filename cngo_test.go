@@ -2,8 +2,6 @@ package main
 
 import (
 	"testing"
-
-	"github.com/rhardin/cngo/store"
 )
 
 func TestStore(t *testing.T) {
@@ -24,7 +22,7 @@ func TestStore(t *testing.T) {
 	t.Run("Get Should Error on Bad Keys", func(t *testing.T) {
 		_, ok := kvs.Get("bad key")
 
-		if ok != store.ErrorNoSuchKey {
+		if ok != ErrorNoSuchKey {
 			t.Error(ok)
 		}
 	})
@@ -50,7 +48,7 @@ func TestStore(t *testing.T) {
 		kvs.Delete("delete me")
 		_, ok := kvs.Get("delete me")
 
-		if ok != store.ErrorNoSuchKey {
+		if ok != ErrorNoSuchKey {
 			t.Error(ok)
 		}
 	})

@@ -1,4 +1,4 @@
-// cngo - simple key-value store toy
+// cngo - simple key-value toy
 package main
 
 import (
@@ -10,39 +10,37 @@ import (
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
-	"github.com/rhardin/cngo/logger"
-	"github.com/rhardin/cngo/store"
 )
 
-var tLog logger.TransactionLogger
+var transact *FileTransactionLogger
 
-var kvs = store.KVS{M: make(map[string]string)}
+var kvs = KVS{M: make(map[string]string)}
 
 func initTransactionLogger() error {
 	var err error
 
-	tLog, err := logger.MakeFileTransactionLogger("transaction.log")
+	transact, err := MakeFileTransactionLogger("transact.log")
 	if err != nil {
-		return fmt.Errorf("failed to create event logger: %w", err)
+		return fmt.Errorf("failed to create event  %w", err)
 	}
 
-	events, errors := tLog.ReadEvents()
-	e, ok := logger.Event{}, true
+	events, errors := transact.ReadEvents()
+	e, ok := Event{}, true
 
 	for ok && err == nil {
 		select {
 		case err, ok = <-errors:
 		case e, ok = <-events:
 			switch e.EventType {
-			case logger.EventDelete:
+			case EventDelete:
 				err = kvs.Delete(e.Key)
-			case logger.EventPut:
+			case EventPut:
 				err = kvs.Put(e.Key, e.Value)
 			}
 		}
 	}
 
-	tLog.Run()
+	transact.Run()
 
 	return err
 }
@@ -54,12 +52,12 @@ func KeyValuePutHandler(w http.ResponseWriter, r *http.Request) {
 	key := vars["key"]
 
 	val, err := io.ReadAll(r.Body)
-	defer r.Body.Close()
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer r.Body.Close()
 
 	err = kvs.Put(key, string(val))
 	if err != nil {
@@ -67,7 +65,9 @@ func KeyValuePutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tLog.WritePut(key, string(val))
+	log.Printf("tlog.lastsequence is %d", transact.lastSequence)
+	transact.WritePut(key, string(val))
+	log.Printf("PUT key=%s value=%s\n", key, val)
 
 	w.WriteHeader(http.StatusCreated)
 }
@@ -79,7 +79,7 @@ func KeyValueGetHandler(w http.ResponseWriter, r *http.Request) {
 	key := vars["key"]
 
 	val, err := kvs.Get(key)
-	if errors.Is(err, store.ErrorNoSuchKey) {
+	if errors.Is(err, ErrorNoSuchKey) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -98,7 +98,7 @@ func KeyValueDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	key := vars["key"]
 
 	err := kvs.Delete(key)
-	if errors.Is(err, store.ErrorNoSuchKey) {
+	if errors.Is(err, ErrorNoSuchKey) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -107,7 +107,7 @@ func KeyValueDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tLog.WriteDelete(key)
+	transact.WriteDelete(key)
 
 	w.WriteHeader(http.StatusOK)
 }
