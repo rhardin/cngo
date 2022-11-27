@@ -37,9 +37,6 @@ type TransactionLogger interface {
 	Run()
 }
 
-// Logger for storing transactions in our kvs
-var Logger TransactionLogger
-
 // FileTransactionLogger data type for event streams and state
 type FileTransactionLogger struct {
 	events       chan<- Event // write only channel for sending events
