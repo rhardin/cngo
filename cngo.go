@@ -19,10 +19,11 @@ var kvs = KVS{M: make(map[string]string)}
 func initTransactionLogger() error {
 	var err error
 
-	transact, err := MakeFileTransactionLogger("transact.log")
+	t, err := MakeFileTransactionLogger("transact.log")
 	if err != nil {
 		return fmt.Errorf("failed to create event  %w", err)
 	}
+	transact = t
 
 	events, errors := transact.ReadEvents()
 	e, ok := Event{}, true
@@ -65,7 +66,6 @@ func KeyValuePutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("tlog.lastsequence is %d", transact.lastSequence)
 	transact.WritePut(key, string(val))
 	log.Printf("PUT key=%s value=%s\n", key, val)
 

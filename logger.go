@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"sync"
@@ -265,11 +264,8 @@ func (l *FileTransactionLogger) Wait() {
 
 // WritePut send put events
 func (l *FileTransactionLogger) WritePut(key, value string) {
-	log.Printf("got to write put")
 	l.wg.Add(1)
-	log.Printf("got to wg add")
 	l.events <- Event{EventType: EventPut, Key: key, Value: value}
-	log.Printf("got done")
 }
 
 // WriteDelete send delete events
