@@ -112,12 +112,15 @@ func KeyValueDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func main() {
+func init() {
 	err := initTransactionLogger()
 	if err != nil {
 		panic(err)
 	}
 
+}
+
+func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/v1/{key}", KeyValuePutHandler).Methods("PUT")
